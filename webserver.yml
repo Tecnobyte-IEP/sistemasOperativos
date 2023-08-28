@@ -1,0 +1,205 @@
+    - name: Tareas de Base de Datos
+      become_user: basedatos
+       ---
+
+- name: Configurar servidor web Apache en openSUSE
+  hosts: webservers
+  become: true
+  tasks:
+    - name: Instalar Apache
+      zypper:
+        name: apache2
+        state: present
+
+    - name: Habilitar y empezar el servicio Apache
+      systemd:
+        name: apache2
+        enabled: yes
+        state: started
+
+    - name: Detener y deshabilitar el servicio Apache
+      systemd:
+        name: apache2
+        enabled: no
+        state: stopped
+
+    - name: Desinstalar Apache
+      zypper:
+        name: apache2
+        state: absent
+
+
+    - name: Tareas de Seguridad
+      become_user: seguridad
+
+      - name: Instalar y configurar el firewall firewalld
+        zypper:
+          name: firewalld
+          state: present
+      - name: Habilitar y arrancar el servicio firewalld
+        systemd:
+          name: firewalld
+          enabled: yes
+          state: started
+      - name: Abrir puertos en el firewall
+        shell: |
+          firewall-cmd --permanent --add-port=22/tcp
+          firewall-cmd --permanent --add-port=80/tcp
+          firewall-cmd --permanent --add-port=443/tcp
+          firewall-cmd --reload
+      - name: Instalar y configurar fail2ban
+        zypper:
+          name: fail2ban
+          state: present
+      - name: Copiar la configuración personalizada de fail2ban
+        copy:
+          src: files/fail2ban/jail.local
+          dest: /etc/fail2ban/
+      - name: Reiniciar fail2ban
+        systemd:
+          name: fail2ban
+          state: restarted
+      - name: Instalar y configurar el sistema de detección de intrusiones (IDS) Snort
+        zypper:
+          name: snort
+          state: present
+      - name: Copiar la configuración personalizada de Snort
+        copy:
+          src: files/snort/snort.conf
+          dest: /etc/snort/
+      - name: Reiniciar Snort
+        systemd:
+          name: snort
+          state: restarted
+      - name: Escanear sistema en busca de malware
+        command: clamscan -r /var/www
+      - name: Monitorear los registros de autenticación
+        command: tail -f /var/log/auth.log
+
+  
+    - name: Tareas de Administrador
+      become_user: admin
+
+       - name: Crear directorio para la API de autenticacion
+      file:
+        path: /var/www/api
+        state: directory
+        owner: "{{ admin }}"
+        group: "{{ admin }}"
+
+         - name: Crear directorio para la API de posts
+      file:
+        path: /var/www/api
+        state: directory
+        owner: "{{ admin }}"
+        group: "{{ admin }}"
+
+ - name: Crear directorio para la API de grupos
+      file:
+        path: /var/www/api
+        state: directory
+        owner: "{{ admin }}"
+        group: "{{ admin }}"
+
+ - name: Crear directorio para la API de eventos
+      file:
+        path: /var/www/api
+        state: directory
+        owner: "{{ admin }}"
+        group: "{{ admin }}"
+
+- name: Configurar servidor web Apache
+  hosts: webservers
+  become: true
+  tasks:
+
+    - name: Instalar Docker
+      become: true
+      zypper:
+        name: docker
+        state: present
+
+    - name: Iniciar y habilitar el servicio Docker
+      systemd:
+        name: docker
+        enabled: yes
+        state: started
+
+    - name: Agregar usuario al grupo docker
+      user:
+        name: "{{ ansible_ssh_user }}"
+        groups: docker
+        append: yes
+      become: true
+
+    - name: Reiniciar el sistema para aplicar cambios de grupo
+      command: shutdown -r now
+      async: 0
+      poll: 0
+      ignore_errors: true
+
+
+    - name: Instalar PHP y módulos
+      become: true
+      zypper:
+        name: php7 php7-mysql php7-apache2
+        state: present
+
+    - name: Reiniciar servicio Apache después de instalar PHP
+      systemd:
+        name: apache2
+        state: restarted
+      become: true
+
+
+    - name: Instalar MySQL
+      become: true
+      zypper:
+        name: mariadb
+        state: present
+
+    - name: Iniciar y habilitar el servicio MySQL
+      systemd:
+        name: mysql
+        enabled: yes
+        state: started
+
+
+    - name: Tareas de Administrador de Redes
+      become_user: redadmin
+       name: Instalar y configurar SSH
+  hosts: all
+  become: true
+  tasks:
+    - name: Instalar paquetes de OpenSSH
+      zypper:
+        name: openssh
+        state: present
+      when: ansible_os_family == 'Suse'
+
+    - name: Copiar archivo de configuración sshd_config
+      template:
+        src: templates/sshd_config.j2
+        dest: /etc/ssh/sshd_config
+      become: true
+
+    - name: Reiniciar servicio SSH
+      service:
+        name: sshd
+        state: restarted
+      become: true
+
+        - name: Configurar el cortafuegos
+      ufw:
+        rule: allow
+        port: 80
+        state: enabled
+
+    - name: Tareas de Administrador de Copias de Seguridad
+      become_user: backupadmin
+ 
+       - name: Crear copia de seguridad de /var/www
+      command: tar czf /respaldos/var_www_backup.tar.gz /var/www
+
+
+
